@@ -1333,10 +1333,7 @@
                   "GET /api/governance/teams/{team_id}/customers",
                   "POST /api/governance/teams/{team_id}/customers",
                   "DELETE /api/governance/teams/{team_id}/customers/{customer_id}",
-                  "GET /api/governance/customers/{customer_id}/teams",
-                  "GET /api/governance/business-units/{business_unit_id}/teams",
-                  "POST /api/governance/business-units/{business_unit_id}/teams",
-                  "DELETE /api/governance/business-units/{business_unit_id}/teams/{team_id}"
+                  "GET /api/governance/customers/{customer_id}/teams"
                 ]
               },
               {
@@ -1357,6 +1354,7 @@
                   "PUT /api/governance/virtual-keys/{vk_id}/budgets/{budget_id}/override",
                   "DELETE /api/governance/virtual-keys/{vk_id}/budgets/{budget_id}/override",
                   "GET /api/governance/users/{user_id}/virtual-keys",
+                  "POST /api/governance/users/{user_id}/virtual-keys",
                   "GET /api/governance/users/email/{email}/virtual-keys"
                 ]
               },
@@ -1381,6 +1379,7 @@
                   "DELETE /api/governance/users/{user_id}",
                   "GET /api/governance/users/email/{email}",
                   "GET /api/governance/users/me/permissions",
+                  "GET /api/governance/users/me/vk-creation-policy",
                   "PUT /api/governance/users/{user_id}/role",
                   "POST /api/governance/users/{user_id}/governance",
                   "PUT /api/governance/users/{user_id}/governance",
@@ -1396,6 +1395,9 @@
                   "GET /api/governance/business-units/{business_unit_id}",
                   "PUT /api/governance/business-units/{business_unit_id}",
                   "DELETE /api/governance/business-units/{business_unit_id}",
+                  "GET /api/governance/business-units/{business_unit_id}/users",
+                  "POST /api/governance/business-units/{business_unit_id}/users",
+                  "DELETE /api/governance/business-units/{business_unit_id}/users/{user_id}",
                   "POST /api/governance/business-units/{business_unit_id}/governance",
                   "PUT /api/governance/business-units/{business_unit_id}/governance",
                   "DELETE /api/governance/business-units/{business_unit_id}/governance",
