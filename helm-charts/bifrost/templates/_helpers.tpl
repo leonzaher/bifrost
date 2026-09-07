@@ -389,6 +389,9 @@ false
 {{- if hasKey .Values.bifrost.client "hideDeletedVirtualKeysInFilters" }}
 {{- $_ := set $client "hide_deleted_virtual_keys_in_filters" .Values.bifrost.client.hideDeletedVirtualKeysInFilters }}
 {{- end }}
+{{- if hasKey .Values.bifrost.client "vkRotationCooldown" }}
+{{- $_ := set $client "vk_rotation_cooldown" .Values.bifrost.client.vkRotationCooldown }}
+{{- end }}
 {{- if hasKey .Values.bifrost.client "mcpDisableAutoToolInject" }}
 {{- $_ := set $client "mcp_disable_auto_tool_inject" .Values.bifrost.client.mcpDisableAutoToolInject }}
 {{- end }}
@@ -610,6 +613,9 @@ false
 {{- end }}
 {{- $_ := set $governance "virtual_keys" $vks }}
 {{- end }}
+{{- if .Values.bifrost.governance.projects }}
+{{- $_ := set $governance "projects" .Values.bifrost.governance.projects }}
+{{- end }}
 {{- if .Values.bifrost.governance.routingRules }}
 {{- $_ := set $governance "routing_rules" .Values.bifrost.governance.routingRules }}
 {{- end }}
@@ -647,7 +653,7 @@ false
 {{- $_ := set $governance "auth_config" $authConfig }}
 {{- end }}
 {{- end }}
-{{- if or $governance.budgets $governance.rate_limits $governance.customers $governance.teams $governance.business_units $governance.roles $governance.virtual_keys $governance.routing_rules $governance.model_configs $governance.providers $governance.pricing_overrides $governance.complexity_analyzer_config $governance.auth_config }}
+{{- if or $governance.budgets $governance.rate_limits $governance.customers $governance.teams $governance.business_units $governance.roles $governance.virtual_keys $governance.projects $governance.routing_rules $governance.model_configs $governance.providers $governance.pricing_overrides $governance.complexity_analyzer_config $governance.auth_config }}
 {{- $_ := set $config "governance" $governance }}
 {{- end }}
 {{- end }}
