@@ -71,8 +71,8 @@ func NewAsyncJobExecutor(logstore LogStore, governanceStore GovernanceStore, web
 	}
 }
 
-// RetrieveJob retrieves a job by its ID.
-func (e *AsyncJobExecutor) RetrieveJob(ctx context.Context, jobID string, vkValue *string, operationType schemas.RequestType) (*AsyncJob, error) {
+// retrieveJob retrieves and authorizes a job by its ID.
+func (e *AsyncJobExecutor) retrieveJob(ctx context.Context, jobID string, vkValue *string, operationType schemas.RequestType) (*AsyncJob, error) {
 	job, err := e.logstore.FindAsyncJobByID(ctx, jobID)
 	if err != nil {
 		if errors.Is(err, ErrNotFound) {
@@ -99,7 +99,12 @@ func (e *AsyncJobExecutor) RetrieveJob(ctx context.Context, jobID string, vkValu
 }
 
 // SubmitJob creates a pending job, starts background execution, and returns the job record.
-func (e *AsyncJobExecutor) SubmitJob(bifrostCtx *schemas.BifrostContext, resultTTL int, operation AsyncOperation, operationType schemas.RequestType) (*AsyncJob, error) {
+func (e *AsyncJobExecutor) SubmitJob(bifrostCtx *schemas.BifrostContext, resultTTL int, operation AsyncOperation, operationType schemas.RequestType) (submitted *AsyncJob, err error) {
+	defer func() {
+		if err != nil {
+			schemas.ReleaseAgentApprovalState(bifrostCtx)
+		}
+	}()
 	if resultTTL <= 0 {
 		resultTTL = DefaultAsyncJobResultTTL
 	}
@@ -140,6 +145,10 @@ func (e *AsyncJobExecutor) SubmitJob(bifrostCtx *schemas.BifrostContext, resultT
 
 	if endpoint != nil {
 		job.WebhookEndpointID = &endpoint.ID
+		job.WebhookContext = bifrost.GetStringFromContext(bifrostCtx, schemas.BifrostContextKeyAsyncWebhookContext)
+		if len(job.WebhookContext) > 4096 {
+			return nil, fmt.Errorf("webhook context exceeds 4096 bytes")
+		}
 	}
 
 	ctx := context.Background()
@@ -161,6 +170,7 @@ func (e *AsyncJobExecutor) SubmitJob(bifrostCtx *schemas.BifrostContext, resultT
 // executeJob runs the operation in the background and updates the job record.
 func (e *AsyncJobExecutor) executeJob(job *AsyncJob, operation AsyncOperation, contextValues map[any]any, g schemas.Grant) {
 	ctx := schemas.NewBifrostContext(context.Background(), schemas.NoDeadline)
+	defer schemas.ReleaseAgentApprovalState(ctx)
 
 	// Restore original request context values (virtual key, tracing headers, etc.)
 	for k, v := range contextValues {
@@ -216,9 +226,27 @@ func (e *AsyncJobExecutor) executeJob(job *AsyncJob, operation AsyncOperation, c
 	}
 
 	ctx.SetValue(schemas.BifrostIsAsyncRequest, true)
+	approval := schemas.GetAgentApprovalState(ctx)
+	var scope string
+	if approval != nil {
+		var err error
+		if scope, err = approvalScope(ctx); err != nil {
+			markFailed("failed to capture approval scope")
+			return
+		}
+	}
 
 	// Execute the operation
 	resp, bifrostErr := operation(ctx)
+	if bifrostErr == nil && approval != nil && approval.Checkpoint != nil {
+		if err := e.pauseAgent(ctx, job, approval.Checkpoint, scope); err != nil {
+			e.logger.Warn("failed to save approval checkpoint for job %s: %v", job.ID, err)
+			markFailed("failed to save approval checkpoint")
+		} else {
+			e.notifyWebhook(ctx, job, schemas.AsyncJobStatusAwaitingApproval)
+		}
+		return
+	}
 
 	now := time.Now().UTC()
 	expiresAt := now.Add(time.Duration(job.ResultTTL) * time.Second)

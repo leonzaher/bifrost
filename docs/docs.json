@@ -229,6 +229,7 @@
               "features/compat-plugin",
               "features/keys-management",
               "features/async-inference",
+              "features/tool-approval",
               "features/webhooks",
               {
                 "group": "Governance",

@@ -30,7 +30,9 @@ const webhookFormSchema = z
 					return false;
 				}
 			}, "Enter a valid HTTP(S) URL"),
-		events: z.array(z.enum(["async_job.completed", "async_job.failed"])).min(1, "Subscribe to at least one event"),
+		events: z
+			.array(z.enum(["async_job.completed", "async_job.failed", "async_job.awaiting_approval"]))
+			.min(1, "Subscribe to at least one event"),
 		include_response: z.boolean(),
 		allow_private_network: z.boolean(),
 		max_retries: z.number().int().min(0).optional(),

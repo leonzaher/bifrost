@@ -83,6 +83,26 @@ async-responses:
     tags:
     - Async Jobs
     parameters:
+    - name: x-bf-async-tool-approval
+      in: header
+      schema:
+        type: boolean
+      description: Enable database-backed MCP approval checkpoints for this Responses job.
+    - name: x-bf-async-auto-tools
+      in: header
+      schema:
+        type: string
+      description: JSON array of exact prefixed MCP names allowed automatically; [] requires approval for function calls.
+    - name: x-bf-mcp-include-tools
+      in: header
+      schema:
+        type: string
+      description: Per-request MCP tool visibility filter.
+    - name: x-bf-async-webhook-context
+      in: header
+      schema:
+        type: string
+      description: Opaque context echoed in async job webhooks.
     - $ref: '#/components/parameters/AsyncResultTTL'
     - $ref: '#/components/parameters/AsyncWebhookEndpoint'
     requestBody:

@@ -1682,6 +1682,9 @@ type AsyncJob struct {
 	ExpiresAt         *time.Time `gorm:"index:idx_async_jobs_expires_at" json:"expires_at,omitempty"`
 	CreatedAt         time.Time  `gorm:"index;not null" json:"created_at"`
 	CompletedAt       *time.Time `json:"completed_at,omitempty"`
+
+	WebhookContext string                       `gorm:"type:text" json:"-"`
+	Approval       *schemas.ToolApprovalRequest `gorm:"-" json:"-"`
 }
 
 // TableName sets the table name for GORM
@@ -1692,6 +1695,7 @@ func (AsyncJob) TableName() string {
 // ToResponse converts an AsyncJob database record to an AsyncJobResponse for JSON output.
 func (j *AsyncJob) ToResponse() *schemas.AsyncJobResponse {
 	resp := &schemas.AsyncJobResponse{
+		Approval:    j.Approval,
 		ID:          j.ID,
 		RequestID:   j.RequestID,
 		Status:      j.Status,

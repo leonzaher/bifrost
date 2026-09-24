@@ -3,6 +3,7 @@ package mcp
 import (
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 	"sync"
 
@@ -152,6 +153,17 @@ func (a *AgentModeExecutor) executeAgent(
 	conversationHistory := adapter.getConversationHistory()
 
 	depth := 0
+	approval := schemas.GetAgentApprovalState(ctx)
+	if _, ok := adapter.(*responsesAPIAdapter); !ok {
+		approval = nil
+	}
+	if approval != nil {
+		depth = approval.Depth
+		if approval.MaxDepth > 0 {
+			maxAgentDepth = approval.MaxDepth
+		}
+		approval.Checkpoint = nil
+	}
 
 	// Track all executed tool results and tool calls across all iterations
 	allExecutedToolResults := make([]*schemas.ChatMessage, 0)
@@ -171,12 +183,23 @@ func (a *AgentModeExecutor) executeAgent(
 		if len(toolCalls) == 0 {
 			break
 		}
+		if approval != nil {
+			if err := validateApprovalCalls(toolCalls); err != nil {
+				return nil, err
+			}
+		}
 
 		// Separate tools into auto-executable and non-auto-executable groups
 		var autoExecutableTools []schemas.ChatAssistantMessageToolCall
 		var nonAutoExecutableTools []schemas.ChatAssistantMessageToolCall
 
 		for _, toolCall := range toolCalls {
+			if approval != nil {
+				if _, decided := approval.Decisions[*toolCall.ID]; decided {
+					autoExecutableTools = append(autoExecutableTools, toolCall)
+					continue
+				}
+			}
 			if toolCall.Function.Name == nil {
 				// Skip tools without names
 				nonAutoExecutableTools = append(nonAutoExecutableTools, toolCall)
@@ -184,6 +207,11 @@ func (a *AgentModeExecutor) executeAgent(
 			}
 
 			toolName := *toolCall.Function.Name
+			// The request allow-list also applies to built-in code-mode tools.
+			if approval != nil && approval.AutoTools != nil && !slices.Contains(approval.AutoTools, toolName) {
+				nonAutoExecutableTools = append(nonAutoExecutableTools, toolCall)
+				continue
+			}
 			client := clientManager.GetClientForTool(toolName)
 			if client == nil {
 				// Allow code mode list, read, and docs tools (all read-only operations)
@@ -264,7 +292,11 @@ func (a *AgentModeExecutor) executeAgent(
 			}
 
 			// Check if tool can be auto-executed
-			if CanAutoExecuteTool(toolName, client.ExecutionConfig) {
+			automatic := CanAutoExecuteTool(toolName, client.ExecutionConfig)
+			if approval != nil && approval.AutoTools != nil {
+				automatic = !shouldSkipToolForConfig(toolName, client.ExecutionConfig)
+			}
+			if automatic {
 				autoExecutableTools = append(autoExecutableTools, toolCall)
 				a.logger.Debug("Tool %s can be auto-executed", toolName)
 			} else {
@@ -275,6 +307,16 @@ func (a *AgentModeExecutor) executeAgent(
 
 		a.logger.Debug("Auto-executable tools: %d", len(autoExecutableTools))
 		a.logger.Debug("Non-auto-executable tools: %d", len(nonAutoExecutableTools))
+
+		// Save the entire group before any effects in a mixed automatic/approval turn.
+		if approval != nil && len(nonAutoExecutableTools) > 0 {
+			approval.Checkpoint = &schemas.AgentCheckpoint{
+				Request:  adapter.createNewRequest(conversationHistory).(*schemas.BifrostResponsesRequest),
+				Response: currentResponse.(*schemas.BifrostResponsesResponse), Pending: nonAutoExecutableTools,
+				Depth: depth - 1, MaxDepth: maxAgentDepth, AutoTools: approval.AutoTools,
+			}
+			return currentResponse, nil
+		}
 
 		// Execute auto-executable tools first
 		var executedToolResults []*schemas.ChatMessage
@@ -295,9 +337,15 @@ func (a *AgentModeExecutor) executeAgent(
 					// plugin can create separate log entries for each parallel tool call.
 					toolCtx := schemas.NewBifrostContext(ctx, schemas.NoDeadline)
 					toolCtx.SetValue(schemas.BifrostContextKeyMCPLogID, uuid.New().String())
-					// No human approved this call, so Code Mode must hold every nested
-					// tool invocation to tools_to_auto_execute (see AuthorizeCodeModeToolCall).
-					toolCtx.SetValue(schemas.BifrostContextKeyMCPUnattendedExecution, true)
+					// Code Mode enforces nested auto-execution rules unless a human approved this call.
+					humanApproved := approval != nil && approval.Decisions[*toolCall.ID]
+					toolCtx.SetValue(schemas.BifrostContextKeyMCPUnattendedExecution, !humanApproved)
+					if approval != nil {
+						if allowed, decided := approval.Decisions[*toolCall.ID]; decided && !allowed {
+							channelToolResults <- createToolResultMessage(toolCall, "User rejected this tool call. Do not execute it.", nil)
+							return
+						}
+					}
 
 					// Create MCP request for this tool call
 					mcpRequest := &schemas.BifrostMCPRequest{
@@ -374,6 +422,12 @@ func (a *AgentModeExecutor) executeAgent(
 			return adapter.createResponseWithExecutedTools(currentResponse, allExecutedToolResults, allExecutedToolCalls, nonAutoExecutableTools), nil
 		}
 
+		if approval != nil {
+			conversationHistory = appendApprovalFeedback(conversationHistory, toolCalls, approval)
+			approval.Decisions = nil
+			approval.FurtherInstructions = nil
+		}
+
 		// Create new request with updated conversation history
 		newReq := adapter.createNewRequest(conversationHistory)
 
@@ -395,6 +449,9 @@ func (a *AgentModeExecutor) executeAgent(
 		accumulatedUsage = schemas.MergeBifrostLLMUsage(accumulatedUsage, adapter.extractUsage(currentResponse))
 	}
 
+	if approval != nil && len(adapter.extractToolCalls(currentResponse)) > 0 {
+		return nil, &schemas.BifrostError{Error: &schemas.ErrorField{Message: "agent iteration limit reached"}}
+	}
 	adapter.applyUsage(currentResponse, accumulatedUsage)
 	return currentResponse, nil
 }

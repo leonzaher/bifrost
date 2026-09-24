@@ -194,6 +194,9 @@ func (d *Dispatcher) DeliverTest(ctx context.Context, endpoint *tables.TableWebh
 	if event == tables.WebhookEventAsyncJobFailed {
 		sample.StatusCode = 500
 	}
+	if event == tables.WebhookEventAsyncJobAwaitingApproval {
+		sample.Approval = &schemas.ToolApprovalRequest{ID: uuid.NewString()}
+	}
 	tuning := tuningFor(endpoint)
 	body, err := renderPayload(sample, event, false, tuning.maxResponsePayloadBytes, now)
 	if err != nil {
@@ -398,6 +401,14 @@ func (d *Dispatcher) attempt(job tables.TableWebhookJob, endpoint *tables.TableW
 	switch {
 	case findErr == nil:
 		requestID = asyncJob.RequestID
+		if job.Event == tables.WebhookEventAsyncJobAwaitingApproval && asyncJob.Status == schemas.AsyncJobStatusAwaitingApproval {
+			if store, ok := d.logStore.(logstore.LogStore); ok {
+				if asyncJob.Approval, err = logstore.FindPendingApproval(d.baseCtx, store, asyncJob.ID); err != nil {
+					d.logger.Warn("webhooks: reading approval for async job %s failed: %v", asyncJob.ID, err)
+					return
+				}
+			}
+		}
 		body, err = renderPayload(asyncJob, job.Event, endpoint.IncludeResponse, tuning.maxResponsePayloadBytes, now)
 	case errors.Is(findErr, logstore.ErrNotFound):
 		// The job row must have existed for this delivery to be queued, so

@@ -26,6 +26,7 @@ type AsyncHandler struct {
 // AsyncPathToTypeMapping maps exact paths to request types (only for non-parameterized paths)
 // Parameterized paths are set per-route in RegisterRoutes
 var AsyncPathToTypeMapping = map[string]schemas.RequestType{
+	"/v1/mcp/tool/approve":           schemas.ResponsesRequest,
 	"/v1/async/completions":          schemas.TextCompletionRequest,
 	"/v1/async/chat/completions":     schemas.ChatCompletionRequest,
 	"/v1/async/responses":            schemas.ResponsesRequest,
@@ -74,6 +75,7 @@ func (h *AsyncHandler) RegisterRoutes(r *router.Router, middlewares ...schemas.B
 	r.POST("/v1/async/completions", lib.ChainMiddlewares(h.asyncTextCompletion, baseMiddlewares...))
 	r.POST("/v1/async/chat/completions", lib.ChainMiddlewares(h.asyncChatCompletion, baseMiddlewares...))
 	r.POST("/v1/async/responses", lib.ChainMiddlewares(h.asyncResponses, baseMiddlewares...))
+	r.POST("/v1/mcp/tool/approve", lib.ChainMiddlewares(h.approveTools, baseMiddlewares...))
 	r.POST("/v1/async/embeddings", lib.ChainMiddlewares(h.asyncEmbeddings, baseMiddlewares...))
 	r.POST("/v1/async/audio/speech", lib.ChainMiddlewares(h.asyncSpeech, baseMiddlewares...))
 	r.POST("/v1/async/audio/transcriptions", lib.ChainMiddlewares(h.asyncTranscription, baseMiddlewares...))
@@ -192,6 +194,9 @@ func (h *AsyncHandler) asyncResponses(ctx *fasthttp.RequestCtx) {
 		return
 	}
 	defer cancel()
+	if !h.prepareToolApproval(ctx, bifrostCtx, bifrostResponsesReq) {
+		return
+	}
 
 	resultTTL := getResultTTLFromHeaderWithDefault(ctx, h.config.ClientConfig.AsyncJobResultTTL)
 

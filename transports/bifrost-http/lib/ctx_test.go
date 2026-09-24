@@ -189,6 +189,7 @@ func TestConvertToBifrostContext_AsyncWebhookHeaderSurvivesStarAllowlist(t *test
 
 	ctx := &fasthttp.RequestCtx{}
 	ctx.Request.Header.Set("x-bf-async-webhook", "receiver")
+	ctx.Request.Header.Set("x-bf-async-webhook-context", "correlation")
 
 	bifrostCtx, cancel := ConvertToBifrostContext(ctx, testHandlerStore{matcher: matcher})
 	defer cancel()
@@ -197,7 +198,13 @@ func TestConvertToBifrostContext_AsyncWebhookHeaderSurvivesStarAllowlist(t *test
 		t.Errorf("expected async webhook endpoint %q to be captured under a * allowlist, got %q (present=%v)", "receiver", got, ok)
 	}
 	// The reserved header must not also leak into forwarded extra headers.
+	if got := bifrostCtx.Value(schemas.BifrostContextKeyAsyncWebhookContext); got != "correlation" {
+		t.Fatalf("missing webhook context: %v", got)
+	}
 	extraHeaders, _ := bifrostCtx.Value(schemas.BifrostContextKeyExtraHeaders).(map[string][]string)
+	if _, ok := extraHeaders["x-bf-async-webhook-context"]; ok {
+		t.Fatal("webhook context leaked to provider")
+	}
 	if _, ok := extraHeaders["x-bf-async-webhook"]; ok {
 		t.Error("expected reserved x-bf-async-webhook to be consumed, not forwarded as an extra header")
 	}

@@ -33,6 +33,11 @@ type eventData struct {
 	Error           json.RawMessage        `json:"error,omitempty"`
 	ErrorOmitted    bool                   `json:"error_omitted,omitempty"`
 	ResultExpired   bool                   `json:"result_expired,omitempty"`
+
+	Context           string                                 `json:"context,omitempty"`
+	ApprovalRequestID string                                 `json:"tool_call_request_id,omitempty"`
+	Calls             []schemas.ChatAssistantMessageToolCall `json:"calls,omitempty"`
+	Justification     string                                 `json:"justification,omitempty"`
 }
 
 // asyncResultPathByType maps each async-capable request type to its
@@ -64,10 +69,11 @@ func AsyncResultPath(requestType schemas.RequestType, jobID string) (string, boo
 	return base + "/" + jobID, true
 }
 
-// EventForJobStatus maps a terminal async job status to the webhook event it
-// fires; non-terminal statuses return false.
+// EventForJobStatus maps approval pauses and terminal states to webhook events.
 func EventForJobStatus(status schemas.AsyncJobStatus) (tables.WebhookEvent, bool) {
 	switch status {
+	case schemas.AsyncJobStatusAwaitingApproval:
+		return tables.WebhookEventAsyncJobAwaitingApproval, true
 	case schemas.AsyncJobStatusCompleted:
 		return tables.WebhookEventAsyncJobCompleted, true
 	case schemas.AsyncJobStatusFailed:
@@ -80,6 +86,9 @@ func EventForJobStatus(status schemas.AsyncJobStatus) (tables.WebhookEvent, bool
 // statusForEvent is the reverse of EventForJobStatus, used when the job row
 // itself is gone and the status must be derived from the queued event.
 func statusForEvent(event tables.WebhookEvent) schemas.AsyncJobStatus {
+	if event == tables.WebhookEventAsyncJobAwaitingApproval {
+		return schemas.AsyncJobStatusAwaitingApproval
+	}
 	if event == tables.WebhookEventAsyncJobFailed {
 		return schemas.AsyncJobStatusFailed
 	}
@@ -93,9 +102,10 @@ func statusForEvent(event tables.WebhookEvent) schemas.AsyncJobStatus {
 // error_omitted so the receiver knows to fetch it instead.
 func renderPayload(job *logstore.AsyncJob, event tables.WebhookEvent, includeResponse bool, maxResponseBytes int, now time.Time) ([]byte, error) {
 	data := eventData{
+		Context:         job.WebhookContext,
 		JobID:           job.ID,
 		RequestType:     job.RequestType,
-		Status:          job.Status,
+		Status:          statusForEvent(event),
 		StatusCode:      job.StatusCode,
 		CreatedAt:       &job.CreatedAt,
 		CompletedAt:     job.CompletedAt,
@@ -103,6 +113,17 @@ func renderPayload(job *logstore.AsyncJob, event tables.WebhookEvent, includeRes
 	}
 	if url, ok := AsyncResultPath(job.RequestType, job.ID); ok {
 		data.ResultURL = url
+	}
+	if event == tables.WebhookEventAsyncJobAwaitingApproval && job.Approval != nil {
+		data.ApprovalRequestID = job.Approval.ID
+		data.Calls = job.Approval.Calls
+		data.Justification = approvalJustification(job.Approval.Calls)
+	}
+	// Approval events and events delivered after the job moved on carry no result.
+	if event == tables.WebhookEventAsyncJobAwaitingApproval || job.Status != data.Status {
+		includeResponse = false
+		data.StatusCode = 0
+		data.CompletedAt = nil
 	}
 	if includeResponse && job.Response != "" {
 		if len(job.Response) <= maxResponseBytes {

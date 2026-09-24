@@ -57,6 +57,10 @@ Streaming is not supported on async endpoints.
 | OCR | `/v1/async/ocr` | `/v1/async/ocr/{job_id}` |
 | Rerank | `/v1/async/rerank` | `/v1/async/rerank/{job_id}` |
 
+## Durable tool approval
+
+See [Durable Tool Approval](/features/tool-approval) for checkpoint and decision details.
+
 ## Submitting a Request
 
 Use the same JSON body as the synchronous endpoint, but switch to the `/v1/async/` path.
@@ -172,7 +176,8 @@ No webhook fires by default, even if you have endpoints registered. Delivery is 
 
 - Pass `x-bf-async-webhook: <endpoint-name>` on the submit request, naming a [Webhook](/features/webhooks) endpoint you already created.
 - The name must resolve to an existing, enabled endpoint, otherwise the submit request itself fails.
-- The endpoint must also be subscribed to `async_job.completed`/`async_job.failed` at the time the job finishes. If it isn't, the submit request still succeeds, but no delivery happens.
+- The endpoint must also be subscribed to `async_job.completed`/`async_job.failed`/`async_job.awaiting_approval` at the time the event fires. If it isn't, the submit request still succeeds, but no delivery happens.
+- Optional `x-bf-async-webhook-context` correlation data is returned inside the signed payload as `data.context`. See [Webhooks](/features/webhooks) for the approval event payload.
 - The header only affects submission; it has no effect on the poll (`GET`) request.
 
 ## Virtual Key Authorization

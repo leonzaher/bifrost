@@ -2,11 +2,12 @@ import { SecretVar } from "./schemas";
 
 // Wire shapes for the /api/webhooks admin API.
 
-export type WebhookEvent = "async_job.completed" | "async_job.failed";
+export type WebhookEvent = "async_job.completed" | "async_job.failed" | "async_job.awaiting_approval";
 
 export const WEBHOOK_EVENTS: { value: WebhookEvent; label: string; description: string }[] = [
 	{ value: "async_job.completed", label: "Async job completed", description: "An async inference job finished successfully." },
 	{ value: "async_job.failed", label: "Async job failed", description: "An async inference job reached a terminal failure." },
+	{ value: "async_job.awaiting_approval", label: "Tool approval requested", description: "An agent paused for a human tool decision." },
 ];
 
 export interface WebhookEndpoint {

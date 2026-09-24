@@ -5,10 +5,12 @@ WebhookEvent:
   enum:
     - async_job.completed
     - async_job.failed
+    - async_job.awaiting_approval
   description: |
-    A terminal async-job event a webhook endpoint can subscribe to:
+    An async-job event a webhook endpoint can subscribe to:
     - async_job.completed: an async job finished successfully
     - async_job.failed: an async job finished with an error
+    - async_job.awaiting_approval: an agent paused for a tool decision
 
 SecretVarValue:
   description: |

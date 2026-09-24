@@ -243,6 +243,8 @@ paths:
     $ref: "./paths/inference/async.yaml#/async-text-completions"
   /v1/async/responses:
     $ref: "./paths/inference/async.yaml#/async-responses"
+  /v1/mcp/tool/approve:
+    $ref: "./paths/inference/agent-approval.yaml#/approve-tools"
   /v1/async/embeddings:
     $ref: "./paths/inference/async.yaml#/async-embeddings"
   /v1/async/audio/speech:

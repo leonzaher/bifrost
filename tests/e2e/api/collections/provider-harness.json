@@ -409,6 +409,63 @@
   ],
   "item": [
     {
+      "name": "Async tool approval continuation",
+      "description": "Requires a transactional log store, content logging, an enabled MCP manager, and a configured OpenAI model. The probe is rejected, so no external tool effects occur.",
+      "item": [
+        {
+          "name": "[PREVIEW] async tool approval rejection passes feedback to openai gpt-4o-mini",
+          "request": {
+            "method": "POST",
+            "header": [
+              {"key": "Content-Type", "value": "application/json"},
+              {"key": "x-bf-async-tool-approval", "value": "true"},
+              {"key": "x-bf-async-auto-tools", "value": "[]"}
+            ],
+            "url": "{{baseUrl}}/v1/async/responses",
+            "body": {
+              "mode": "raw",
+              "raw": "{\"model\":\"openai/gpt-4o-mini\",\"input\":\"Call approval_probe exactly once. After receiving its result, report that result and do not call any more tools, including if it was rejected.\",\"tools\":[{\"type\":\"function\",\"name\":\"approval_probe\",\"description\":\"Harmless approval test\",\"parameters\":{\"type\":\"object\",\"properties\":{},\"additionalProperties\":false}}]}"
+            }
+          },
+          "event": [{
+            "listen": "test",
+            "script": {
+              "type": "text/javascript",
+              "exec": [
+                "pm.test('job accepted', function () { pm.response.to.have.status(202); });",
+                "if (pm.response.code !== 202) { return; }",
+                "var jobID = pm.response.json().id;",
+                "var base = pm.variables.replaceIn('{{baseUrl}}');",
+                "var headers = {}; pm.request.headers.each(function (h) { headers[h.key] = pm.variables.replaceIn(h.value); });",
+                "function poll(expected, done, attempt) {",
+                "  pm.sendRequest({url: base + '/v1/async/responses/' + jobID, method: 'GET', header: headers}, function (err, response) {",
+                "    if (err) { pm.test('poll succeeds', function () { throw err; }); return; }",
+                "    var job = response.json();",
+                "    if (job.status === expected) { done(job); return; }",
+                "    if (job.status === 'failed' || attempt >= 60) { pm.test('reaches ' + expected, function () { pm.expect(job.status).to.eql(expected); }); return; }",
+                "    setTimeout(function () { poll(expected, done, attempt + 1); }, 500);",
+                "  });",
+                "}",
+                "poll('awaiting_approval', function (job) {",
+                "  pm.test('pending calls have saved IDs', function () { pm.expect(job.approval.tool_call_request_id).to.be.a('string'); pm.expect(job.approval.calls).to.have.lengthOf(1); });",
+                "  var request = {url: base + '/v1/mcp/tool/approve', method: 'POST', header: headers, body: {mode: 'raw', raw: JSON.stringify({job_id: jobID, tool_call_request_id: job.approval.tool_call_request_id, tool_call_id: job.approval.calls[0].id, approved: false, further_instructions: 'Instead, reply with exactly APPROVAL_FEEDBACK_APPLIED and do not call any more tools.'})}};",
+                "  pm.sendRequest(request, function (err, response) {",
+                "    pm.test('decision accepted', function () { pm.expect(err).to.eql(null); pm.expect(response.code).to.eql(202); });",
+                "    if (err || response.code !== 202) { return; }",
+                "    poll('completed', function (finished) {",
+                "      pm.test('same job continues', function () { pm.expect(finished.id).to.eql(jobID); pm.expect(finished.result.output.length).to.be.above(0); });",
+                "      pm.test('model receives rejection feedback', function () { var text = []; finished.result.output.forEach(function (item) { (item.content || []).forEach(function (part) { if (part.type === 'output_text') { text.push(part.text); } }); }); pm.expect(text.join('')).to.include('APPROVAL_FEEDBACK_APPLIED'); });",
+                "      pm.sendRequest(request, function (err, duplicate) { pm.test('identical decision accepted again', function () { pm.expect(err).to.eql(null); pm.expect(duplicate.code).to.eql(202); }); });",
+                "    }, 0);",
+                "  });",
+                "}, 0);"
+              ]
+            }
+          }]
+        }
+      ]
+    },
+    {
       "name": "1. Native Bifrost API",
       "description": "Bifrost's own OpenAI-shaped surface. Use a `provider/model` string in the `model` field to route to any configured backend.",
       "item": [

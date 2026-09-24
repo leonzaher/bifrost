@@ -21,6 +21,7 @@ import (
 type WebhookEvent string
 
 const (
+	WebhookEventAsyncJobAwaitingApproval WebhookEvent = "async_job.awaiting_approval"
 	// WebhookEventAsyncJobCompleted fires when an async inference job finishes successfully.
 	WebhookEventAsyncJobCompleted WebhookEvent = "async_job.completed"
 	// WebhookEventAsyncJobFailed fires when an async inference job reaches a terminal failure.
@@ -29,6 +30,7 @@ const (
 
 // WebhookEvents lists every supported webhook event.
 var WebhookEvents = []WebhookEvent{
+	WebhookEventAsyncJobAwaitingApproval,
 	WebhookEventAsyncJobCompleted,
 	WebhookEventAsyncJobFailed,
 }

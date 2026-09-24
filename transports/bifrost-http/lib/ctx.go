@@ -627,6 +627,10 @@ func ConvertToBifrostContext(ctx *fasthttp.RequestCtx, store HandlerStore) (*sch
 			}
 			return true
 		}
+		if keyStr == "x-bf-async-webhook-context" {
+			bifrostCtx.SetValue(schemas.BifrostContextKeyAsyncWebhookContext, string(value))
+			return true
+		}
 		// Direct header forwarding: when allowlist is configured, any header explicitly
 		// in the allowlist can be forwarded directly without the x-bf-eh- prefix.
 		// This enables forwarding arbitrary headers like "anthropic-beta" directly.

@@ -6,6 +6,7 @@ AsyncJobStatus:
   enum:
     - pending
     - processing
+    - awaiting_approval
     - completed
     - failed
 
@@ -17,6 +18,26 @@ AsyncJobResponse:
     - status
     - created_at
   properties:
+    approval:
+      type: object
+      description: The immutable pending approval group, present while awaiting_approval.
+      properties:
+        tool_call_request_id:
+          type: string
+        calls:
+          type: array
+          items:
+            type: object
+            properties:
+              id:
+                type: string
+              function:
+                type: object
+                properties:
+                  name:
+                    type: string
+                  arguments:
+                    type: string
     id:
       type: string
       description: Unique identifier for the async job

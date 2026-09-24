@@ -50,13 +50,12 @@
   # Copy UI build output into transports
   COPY --from=ui-builder /app/out ./transports/bifrost-http/ui
 
-  # Build the binary with CGO enabled and static SQLite linking
+  # Build dynamically so mounted Go plugins can be loaded.
   ARG VERSION=unknown
   RUN cd /build/transports && \
     go build \
-      -ldflags="-w -s -X main.Version=v${VERSION} -extldflags '-static'" \
+      -ldflags="-w -s -X main.Version=v${VERSION}" \
       -a -trimpath \
-      -tags "sqlite_static" \
       -o /app/main \
       ./bifrost-http
 

@@ -1903,7 +1903,8 @@
               "type": "string",
               "enum": [
                 "async_job.completed",
-                "async_job.failed"
+                "async_job.failed",
+                "async_job.awaiting_approval"
               ]
             },
             "description": "Events this endpoint subscribes to."

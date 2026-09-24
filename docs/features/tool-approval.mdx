@@ -1,0 +1,62 @@
+---
+title: "Durable Tool Approval"
+description: "Pause async Responses jobs for MCP tool approval and resume them with saved decisions."
+icon: "check"
+---
+
+## Durable tool approval
+
+For `POST /v1/async/responses`, send `x-bf-async-tool-approval: true` to enable
+database checkpoints. This requires a SQLite or PostgreSQL log store, including
+hybrid object-storage configurations. Other async request types and streaming
+do not support approval checkpoints.
+
+`x-bf-async-auto-tools` accepts a JSON array of exact MCP tool names, such as
+`["calculator-add"]`. Send `[]` to require approval for MCP function calls;
+omit the header to use the MCP client auto-execution configuration. Execution
+still respects client permissions and request tool filters.
+
+When paused, polling returns HTTP 200 with `status: "awaiting_approval"` and
+`approval: {"tool_call_request_id": "APPROVAL_ID", "calls": [...]}`. Each call
+contains `id`, `function.name`, and `function.arguments`. Submit one decision
+per call:
+
+```sh
+curl -X POST http://localhost:8080/v1/mcp/tool/approve \
+  -H 'Content-Type: application/json' \
+  -d '{"job_id":"JOB_ID","tool_call_request_id":"APPROVAL_ID","tool_call_id":"CALL_ID","approved":false,"further_instructions":"Try a different approach without this tool."}'
+```
+
+`true` approves; `false` rejects. Supply the same authentication, MCP identity,
+and forwarded MCP headers as the submission. Tool filters and the auto-execution
+list are restored from the saved checkpoint; approval headers cannot change
+them. Arguments come from the database, never the approval body. Each decision
+returns HTTP 202; the job resumes after every call in the group has a decision.
+Repeating the same decision also returns 202, including after the job resumes.
+Changing a saved decision or its feedback, or submitting a stale approval, returns 409.
+Continue polling the **same job ID**. Rejections become tool results for the
+model. A later call needs its own approval even if it reuses a call ID.
+
+Rejected decisions can include optional `further_instructions`. The text is trimmed
+and saved with the decision. When the group resumes, each nonempty instruction is
+appended once as a user message after all tool results, in the original call order.
+The message identifies the rejected call and remains in subsequent conversation
+history. Nonempty instructions with `approved: true` return HTTP 400.
+
+The checkpoint includes previous turns, the pending response, tool and client
+filters, the auto-execution list, and the remaining iteration budget.
+Mixed automatic/approval groups pause before that group's tools run.
+
+Plugins can preserve small, non-sensitive context values with
+`schemas.AppendToContextList(ctx, schemas.AgentCheckpointContextKeys, key)`, where
+`key` is their custom `schemas.BifrostContextKey`. This adds to the shared selection
+without replacing other plugins' keys. Values are saved in the checkpoint JSON and
+restored before resumed hooks run; the selection also survives subsequent pauses.
+Use JSON values: booleans and strings retain their types, numbers restore as
+`json.Number`, arrays as `[]any`, and objects as `map[string]any`. Runtime objects,
+credentials, and Bifrost's internal context keys should not be selected.
+Unsupported JSON values fail checkpoint creation instead of being silently lost.
+
+Paused jobs do not expire, and a paused job survives restarts because the
+checkpoint lives in the log store. A crash while tools are executing is not
+retried automatically, since an external tool may already have changed data.

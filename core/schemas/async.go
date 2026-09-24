@@ -21,6 +21,8 @@ const (
 	AsyncJobStatusFailed     AsyncJobStatus = "failed"
 )
 
+const BifrostContextKeyAsyncWebhookContext BifrostContextKey = "bifrost-async-webhook-context"
+
 const (
 	// AsyncHeaderResultTTL is the header containing the result TTL for async job retrieval.
 	AsyncHeaderResultTTL = "x-bf-async-job-result-ttl"
@@ -41,4 +43,6 @@ type AsyncJobResponse struct {
 	StatusCode  int            `json:"status_code,omitempty"`
 	Result      interface{}    `json:"result,omitempty"`
 	Error       *BifrostError  `json:"error,omitempty"`
+
+	Approval *ToolApprovalRequest `json:"approval,omitempty"`
 }
